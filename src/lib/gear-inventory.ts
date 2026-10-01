@@ -7,6 +7,7 @@ export const MODEL_CATALOG = [
   { id: "moog-one", name: "Moog One", maker: "Moog", kind: "midi", ports: [{ name: "MIDI OUT", direction: "out" }, { name: "MIDI IN", direction: "in" }], source: "https://cdn.inmusicbrands.com/Moog/MoogOne/Moog_One_Manual_8_2_19.pdf", note: "DIN IN/OUT verified; physical connections still need confirmation." },
   { id: "novation-peak", name: "Peak", maker: "Novation", kind: "midi", ports: [{ name: "MIDI OUT", direction: "out" }, { name: "MIDI IN", direction: "in" }], source: "https://userguides.novationmusic.com/hc/en-gb/articles/25494651161362-Peak-hardware-overview", note: "DIN IN/OUT verified; physical connections still need confirmation." },
   { id: "kontrol-s88-mk3", name: "Kontrol S88 MK3", maker: "Native Instruments", kind: "midi", ports: [{ name: "MIDI OUT", direction: "out" }], source: "https://docs.native-instruments.com/ni-tech-manuals/kontrol-s-mk3-manual/en/midi-mode", note: "DIN OUT verified. Other connectors are not modeled here." },
+  { id: "akai-mpc-x", name: "MPC X", maker: "Akai", kind: "midi", ports: [], source: "", note: "User-confirmed model name. Port list and control behavior require source verification." },
   { id: "mioxl", name: "mioXL", maker: "iConnectivity", kind: "hub", ports: [], source: "https://www.iconnectivity.com/mioxl", note: "DIN sides come from the captured mioXL port inventory." },
   { id: "motu-24ai", name: "24Ai", maker: "MOTU", kind: "audio", ports: [], source: "https://motu.com/techsupport/manuals", note: "Audio connector details await confirmation on this unit." },
   { id: "motu-24ao", name: "24Ao", maker: "MOTU", kind: "audio", ports: [], source: "https://motu.com/techsupport/manuals", note: "Audio connector details await confirmation on this unit." },
@@ -21,6 +22,7 @@ export type GearUnit = {
   modelId?: string | null;
   capabilities?: ("midi" | "audio" | "controller" | "display")[];
   audioPorts?: AudioPort[];
+  position?: { x: number; y: number };
   profileId: string | null; profileSource: "manual" | "device-identity" | "midi-ci"; profileEvidence: string | null;
   controlBindings?: ControlBindingEvidence[];
 };
@@ -46,6 +48,8 @@ export function parseGearInventory(value: unknown): GearInventory | null {
         (unit.midiChannel !== null && (!Number.isInteger(unit.midiChannel) || unit.midiChannel < 1 || unit.midiChannel > 16)) ||
         (unit.profileId !== null && !validId(unit.profileId)) ||
         (unit.modelId !== undefined && unit.modelId !== null && !validId(unit.modelId)) ||
+        (unit.position !== undefined && (!unit.position || !Number.isFinite(unit.position.x) || !Number.isFinite(unit.position.y) ||
+          Math.abs(unit.position.x) > 10000 || Math.abs(unit.position.y) > 10000)) ||
         !["manual", "device-identity", "midi-ci"].includes(unit.profileSource) ||
         (unit.profileSource === "manual" ? unit.profileEvidence !== null : !validName(unit.profileEvidence)) ||
         !Array.isArray(unit.endpoints) || unit.endpoints.length > 16 ||

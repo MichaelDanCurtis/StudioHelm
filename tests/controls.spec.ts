@@ -32,6 +32,7 @@ test.beforeEach(async ({ page }) => {
 
 async function createPeakAction(page: Page) {
   await page.goto("/");
+  await page.getByRole("tab", { name: "Producer", exact: true }).click();
   await page.getByRole("tab", { name: "Control room" }).click();
   await page.getByRole("button", { name: /Novation Peak/ }).click();
   await page.getByRole("combobox", { name: "Instrument output" }).selectOption("13");
@@ -50,7 +51,7 @@ test("centered workflow keeps workspace context and closes canvas overlays on vi
     const box = element.getBoundingClientRect(); return Math.abs(box.left + box.width / 2 - window.innerWidth / 2);
   });
   expect(centerOffset).toBeLessThan(12);
-  await expect(page.getByRole("link", { name: "MioXLplus Studio" })).toHaveCount(0);
+  await page.getByRole("tab", { name: "Producer", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Port library" })).toBeVisible();
   await page.getByRole("button", { name: "Canvas help" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
@@ -71,6 +72,12 @@ test("centered workflow keeps workspace context and closes canvas overlays on vi
   await expect(page.locator(".react-flow__node")).toHaveCount(5);
   await page.getByRole("button", { name: "Save scene", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("button", { name: "Studio home" }).click();
+  await expect(page.getByRole("tab", { name: "Sound engineer" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: /Physical wiring/ })).toBeVisible();
+  await expect(page.locator(".canvas-wrapper")).toBeHidden();
 });
 
 test("panel edits, previews exact replacement, stages locally, and survives reload", async ({ page }) => {
@@ -118,6 +125,7 @@ test("panel edits, previews exact replacement, stages locally, and survives relo
 test("control surface fits a narrow browser without page overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+  await page.getByRole("tab", { name: "Producer", exact: true }).click();
   await page.getByRole("tab", { name: "Control room" }).click();
   await expect(page.getByRole("button", { name: "Create first control" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Workflow" })).toBeVisible();
@@ -285,6 +293,7 @@ test("surface preview preserves unknown values and Peak NRPN label", () => {
 
 test("Peak slider shows simulated bytes and retains unknown values elsewhere", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("tab", { name: "Producer", exact: true }).click();
   await page.getByRole("tab", { name: "Control room" }).click();
   await page.getByRole("button", { name: /Novation Peak/ }).click();
   const slider = page.locator(".instrument-parameters input").first();
@@ -296,6 +305,7 @@ test("Peak slider shows simulated bytes and retains unknown values elsewhere", a
 
 test("OSC listener lease expires after owning tab reloads", async ({ page, request }) => {
   await page.goto("/");
+  await page.getByRole("tab", { name: "Producer", exact: true }).click();
   await page.getByRole("tab", { name: "Control room" }).click();
   await page.getByRole("button", { name: "OSC bridge" }).click();
   await page.getByRole("spinbutton", { name: "OSC UDP port" }).fill("0");
@@ -319,6 +329,7 @@ test("second tab cannot replace active OSC bindings or consume its events", asyn
   const sender = createSocket("udp4");
   try {
     await other.goto("/");
+    await other.getByRole("tab", { name: "Producer", exact: true }).click();
     await other.getByRole("tab", { name: "Control room" }).click();
     const denied = await other.evaluate(async () => {
       const configure = await fetch("/api/controls/configure", { method: "POST", headers: { "Content-Type": "application/json", "X-MioXLplus": "studio" }, body: JSON.stringify({ client: "second-tab-client", bindings: [] }) });

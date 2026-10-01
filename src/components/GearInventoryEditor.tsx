@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { captureFor, endpointName, type Scene } from "../lib/studio";
+import { captureFor, endpointName, routesFor, type Scene } from "../lib/studio";
 import { planQuickRoute, type QuickRoutePlan, type RouteAction } from "../lib/controls";
-import { PROFILE_CATALOG, resolveEndpoint, resolveNamedRoute,
+import { MODEL_CATALOG, PROFILE_CATALOG, resolveEndpoint, resolveNamedRoute,
   type GearInventory, type GearUnit, type MidiEndpoint, type NamedRoute } from "../lib/gear-inventory";
+import { GearWiringCanvas } from "./GearWiringCanvas";
 
 type Props = { inventory: GearInventory; scene: Scene; onChange: (next: GearInventory) => void; onStage: (plan: QuickRoutePlan) => string };
 export function GearInventoryEditor({ inventory, scene, onChange, onStage }: Props) {
@@ -14,6 +15,7 @@ export function GearInventoryEditor({ inventory, scene, onChange, onStage }: Pro
   const [targetEndpoint, setTargetEndpoint] = useState("");
   const [preview, setPreview] = useState<QuickRoutePlan | null>(null);
   const [message, setMessage] = useState("");
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const endpoints = inventory.units.flatMap(unit => unit.endpoints.map(endpoint => ({ ...endpoint, unit })));
   const selectedWireEndpoint = endpoints.find(item => item.id === wireEndpoint);
   const dinPorts = captureFor(scene).ports.filter(port => /^DIN \d+$/.test(port.hardware));
@@ -24,6 +26,28 @@ export function GearInventoryEditor({ inventory, scene, onChange, onStage }: Pro
   };
   const updateUnit = (id: string, update: (unit: GearUnit) => GearUnit) => onChange({ ...inventory,
     units: inventory.units.map(unit => unit.id === id ? update(unit) : unit) });
+  function addCatalogModel(model: (typeof MODEL_CATALOG)[number]) {
+    if (model.kind === "hub") return setMessage("The connected mioXL is already represented by the router cards.");
+    const existing = inventory.units.filter(unit => unit.modelId === model.id).length;
+    const name = `${model.name}${existing ? ` ${existing + 1}` : ""}`;
+    const unit: GearUnit = { id: crypto.randomUUID(), name, modelId: model.id, midiChannel: null,
+      profileId: null, profileSource: "manual", profileEvidence: null,
+      capabilities: model.id === "kontrol-s88-mk3" ? ["midi", "controller", "display"] :
+        model.id === "akai-mpc-x" ? ["controller"] : model.kind === "audio" ? ["audio"] : ["midi"],
+      endpoints: model.ports.map(port => ({ id: crypto.randomUUID(), name: port.name, direction: port.direction })), audioPorts: [] };
+    onChange({ ...inventory, units: [...inventory.units, unit] });
+    setMessage(`${name} added as your own unit. Its physical connections are still unknown.`);
+    setCatalogOpen(false);
+  }
+  function addCustomEquipment() {
+    const name = unitName.trim();
+    if (!name) return setMessage("Name the custom equipment first.");
+    const unit: GearUnit = { id: crypto.randomUUID(), name, modelId: null, midiChannel: null,
+      profileId: null, profileSource: "manual", profileEvidence: null,
+      capabilities: [], endpoints: [], audioPorts: [] };
+    onChange({ ...inventory, units: [...inventory.units, unit] });
+    setUnitName(""); setMessage("Custom equipment added with no assumed ports. Add only confirmed connectors below.");
+  }
   function addUnit() {
     const name = unitName.trim();
     if (!name) return setMessage("Name the instrument before adding it.");
@@ -36,10 +60,22 @@ export function GearInventoryEditor({ inventory, scene, onChange, onStage }: Pro
   }
   function deleteUnit(unit: GearUnit) {
     const ids = new Set(unit.endpoints.map(endpoint => endpoint.id));
+    const audioIds = new Set((unit.audioPorts ?? []).map(port => port.id));
     onChange({ ...inventory, units: inventory.units.filter(item => item.id !== unit.id),
       wires: inventory.wires.filter(wire => !ids.has(wire.endpointId)),
-      routes: inventory.routes.filter(route => !ids.has(route.sourceEndpointId) && !ids.has(route.targetEndpointId)) });
+      routes: inventory.routes.filter(route => !ids.has(route.sourceEndpointId) && !ids.has(route.targetEndpointId)),
+      audio: { ...inventory.audio, links: inventory.audio.links.filter(link => !audioIds.has(link.from) && !audioIds.has(link.to)) } });
     setPreview(null);
+  }
+  function addAudioPort(unit: GearUnit, direction: "in" | "out") {
+    updateUnit(unit.id, current => ({ ...current,
+      capabilities: [...new Set([...(current.capabilities ?? []), "audio" as const])],
+      audioPorts: [...(current.audioPorts ?? []), { id: crypto.randomUUID(), name: `Audio ${direction.toUpperCase()}`, direction }] }));
+  }
+  function deleteAudioPort(unit: GearUnit, portId: string) {
+    onChange({ ...inventory, units: inventory.units.map(item => item.id === unit.id ?
+      { ...item, audioPorts: (item.audioPorts ?? []).filter(port => port.id !== portId) } : item),
+      audio: { ...inventory.audio, links: inventory.audio.links.filter(link => link.from !== portId && link.to !== portId) } });
   }
   function deleteEndpoint(unit: GearUnit, endpoint: MidiEndpoint) {
     onChange({ ...inventory, units: inventory.units.map(item => item.id === unit.id ?
@@ -68,27 +104,37 @@ export function GearInventoryEditor({ inventory, scene, onChange, onStage }: Pro
       policy: route.policy, oscPath: `/mioxlplus/gear/${route.id}`, color: "blue" };
   }
   return <div className="gear-editor">
-    <p className="modal-intro">Record what is physically plugged in, then name the routes you want. DIN wiring is entered by you; device port names alone do not prove a connection. No hardware command is sent here.</p>
-    <section className="gear-section"><h3>Instruments <span>{inventory.units.length}</span></h3>
+    <section className="gear-visual-section">
+      <div className="gear-visual-head"><div><span className="gear-kicker">SOUND ENGINEER · PHYSICAL LAYER</span><h3>Your equipment and cables</h3><p>Place units and drag between compatible ports to record MIDI DIN or audio cables. Every connection is a manual entry in this browser.</p></div><button className="button primary" onClick={() => setCatalogOpen(open => !open)}>{catalogOpen ? "Close catalog" : "+ Add from catalog"}</button></div>
+      {catalogOpen && <div className="gear-catalog" aria-label="Equipment model catalog">{MODEL_CATALOG.map(model => <button key={model.id} disabled={model.kind === "hub"} onClick={() => addCatalogModel(model)}><strong>{model.maker} {model.name}</strong><span>{model.note}</span><small>{model.kind === "hub" ? "Already represented" : model.ports.length ? `${model.ports.length} sourced MIDI port${model.ports.length === 1 ? "" : "s"}` : "No ports assumed"}</small></button>)}</div>}
+      <div className="gear-signal-legend"><span><i className="midi-swatch"/>MIDI DIN</span><span><i className="audio-swatch"/>Audio</span><span>Only recorded cables appear as solid lines</span></div>
+      <GearWiringCanvas inventory={inventory} scene={scene} onChange={onChange} onNotice={setMessage}/>
+      <div className="gear-internal-routes"><details><summary>mioXL internal MIDI routes <span>{routesFor(scene).length}</span></summary><p>{captureFor(scene).revision ? "Read from the configured mioXL; draft changes stay local until separately reviewed." : "Synthetic demo routes. These are not a read of your mioXL."}</p><div>{routesFor(scene).slice(0,12).map(route => <small key={route.id}>{endpointName(route.source, scene.nodes, captureFor(scene))} → {endpointName(route.target, scene.nodes, captureFor(scene))}</small>)}{routesFor(scene).length > 12 && <small>+ {routesFor(scene).length - 12} more in Producer → Routes</small>}</div></details><details><summary>MOTU internal audio routes <span>Not loaded</span></summary><p>No MOTU internal routing state has been retrieved for these units. Audio cards and cables are manually entered here; this view does not send mixer or routing commands.</p></details></div>
+    </section>
+    <p className="modal-intro">Review unit names, ports, channels, and manual cable entries below. Source model definitions are separate from your unit settings. No hardware command is sent here.</p>
+    <section className="gear-section"><h3>Your equipment <span>{inventory.units.length} unit{inventory.units.length === 1 ? "" : "s"}</span></h3>
       {inventory.units.map(unit => <div className="gear-unit" key={unit.id}>
         <div className="gear-unit-head"><label>Instrument name<input aria-label={`Name ${unit.name}`} value={unit.name} maxLength={80} onChange={event => updateUnit(unit.id, current => ({ ...current, name: event.target.value }))}/></label><button className="button subtle" onClick={() => deleteUnit(unit)}>Remove</button></div>
+        <small className="gear-evidence">Model: {MODEL_CATALOG.find(model => model.id === unit.modelId)?.maker ?? "Custom"} {MODEL_CATALOG.find(model => model.id === unit.modelId)?.name ?? "equipment"}. {MODEL_CATALOG.find(model => model.id === unit.modelId)?.note ?? "Ports are entered by you."} {MODEL_CATALOG.find(model => model.id === unit.modelId)?.source && <a href={MODEL_CATALOG.find(model => model.id === unit.modelId)?.source} target="_blank" rel="noreferrer">Model source ↗</a>}</small>
+        <div className="gear-capabilities">{(["midi", "audio", "controller", "display"] as const).map(capability => <label key={capability}><input type="checkbox" checked={(unit.capabilities ?? []).includes(capability)} onChange={event => updateUnit(unit.id, current => ({ ...current, capabilities: event.target.checked ? [...new Set([...(current.capabilities ?? []), capability])] : (current.capabilities ?? []).filter(item => item !== capability) }))}/>{capability}</label>)}</div>
         <div className="gear-unit-settings"><label>Parameter profile<select aria-label={`Profile for ${unit.name}`} value={unit.profileId ?? ""} onChange={event => updateUnit(unit.id, current => ({ ...current, profileId: event.target.value || null, profileSource: "manual", profileEvidence: null }))}><option value="">Unspecified</option>{PROFILE_CATALOG.map(profile => <option key={profile.id} value={profile.id}>{profile.manufacturer} {profile.name}</option>)}</select></label><label>MIDI channel<select aria-label={`MIDI channel for ${unit.name}`} value={unit.midiChannel ?? ""} onChange={event => updateUnit(unit.id, current => ({ ...current, midiChannel: event.target.value ? Number(event.target.value) : null }))}><option value="">Unknown</option>{Array.from({ length: 16 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}</option>)}</select></label></div>
         <small className="gear-evidence">Profile choice is manual. Identity discovery, MIDI-CI Property Exchange and control MIDI learn have not been run.</small>
         {unit.endpoints.map(endpoint => { const status = resolveEndpoint(inventory, scene, endpoint.id); return <div className="gear-endpoint" key={endpoint.id}><span>{endpoint.direction === "out" ? "Instrument OUT → mioXL IN" : "mioXL OUT → instrument IN"}</span><input aria-label={`Endpoint ${unit.name} ${endpoint.name}`} value={endpoint.name} maxLength={80} onChange={event => updateUnit(unit.id, current => ({ ...current, endpoints: current.endpoints.map(item => item.id === endpoint.id ? { ...item, name: event.target.value } : item) }))}/><small>{status.port ? `DIN ${status.port} · ${endpoint.direction === "out" ? "mioXL input" : "mioXL output"}` : status.issues.join(" ")}</small><button className="icon-button" aria-label={`Remove endpoint ${unit.name} ${endpoint.name}`} onClick={() => deleteEndpoint(unit, endpoint)}>×</button></div>; })}
-        <div className="gear-inline-actions"><button className="button subtle" onClick={() => updateUnit(unit.id, current => ({ ...current, endpoints: [...current.endpoints, { id: crypto.randomUUID(), name: "MIDI OUT", direction: "out" }] }))}>Add MIDI OUT</button><button className="button subtle" onClick={() => updateUnit(unit.id, current => ({ ...current, endpoints: [...current.endpoints, { id: crypto.randomUUID(), name: "MIDI IN", direction: "in" }] }))}>Add MIDI IN</button></div>
+        {(unit.audioPorts ?? []).map(port => <div className="gear-endpoint audio-endpoint" key={port.id}><span>Audio {port.direction.toUpperCase()} · manually entered</span><input aria-label={`Audio port ${unit.name} ${port.name}`} value={port.name} maxLength={80} onChange={event => updateUnit(unit.id, current => ({ ...current, audioPorts: (current.audioPorts ?? []).map(item => item.id === port.id ? { ...item, name: event.target.value } : item) }))}/><small>{inventory.audio.links.filter(link => link.from === port.id || link.to === port.id).length} recorded cable(s)</small><button className="icon-button" aria-label={`Remove audio port ${unit.name} ${port.name}`} onClick={() => deleteAudioPort(unit, port.id)}>×</button></div>)}
+        <div className="gear-inline-actions"><button className="button subtle" onClick={() => updateUnit(unit.id, current => ({ ...current, capabilities: [...new Set([...(current.capabilities ?? []), "midi" as const])], endpoints: [...current.endpoints, { id: crypto.randomUUID(), name: "MIDI OUT", direction: "out" }] }))}>Add MIDI OUT</button><button className="button subtle" onClick={() => updateUnit(unit.id, current => ({ ...current, capabilities: [...new Set([...(current.capabilities ?? []), "midi" as const])], endpoints: [...current.endpoints, { id: crypto.randomUUID(), name: "MIDI IN", direction: "in" }] }))}>Add MIDI IN</button><button className="button subtle" onClick={() => addAudioPort(unit, "out")}>Add audio OUT</button><button className="button subtle" onClick={() => addAudioPort(unit, "in")}>Add audio IN</button></div>
       </div>)}
-      <div className="gear-form"><label>New instrument<input aria-label="New instrument" placeholder="e.g. Moog One" value={unitName} maxLength={80} onChange={event => setUnitName(event.target.value)}/></label><button className="button primary" onClick={addUnit}>Add instrument</button></div>
+      <div className="gear-form"><label>New instrument or custom unit<input aria-label="New instrument" placeholder="e.g. an unknown controller" value={unitName} maxLength={80} onChange={event => setUnitName(event.target.value)}/></label><button className="button secondary" onClick={addCustomEquipment}>Add custom equipment</button><button className="button subtle" onClick={addUnit}>Add MIDI instrument with manual IN/OUT</button></div>
     </section>
     <section className="gear-section"><h3>Physical DIN connections <span>{inventory.wires.length}</span></h3><p>OUT and IN are relative to the instrument. DIN numbers refer to the matching side of the mioXL.</p>
       {inventory.wires.map(wire => { const endpoint = endpoints.find(item => item.id === wire.endpointId); return <div className="gear-wire" key={wire.id}><span>{label(wire.endpointId)} {endpoint?.direction === "out" ? "→ mioXL DIN input" : "← mioXL DIN output"} {wire.mioPort}</span><button className="button subtle" onClick={() => onChange({ ...inventory, wires: inventory.wires.filter(item => item.id !== wire.id) })}>Remove</button></div>; })}
       <div className="gear-form"><label>Gear endpoint<select aria-label="Wire gear endpoint" value={wireEndpoint} onChange={event => { setWireEndpoint(event.target.value); setWirePort(0); }}><option value="">Choose endpoint</option>{endpoints.map(endpoint => <option key={endpoint.id} value={endpoint.id}>{endpoint.unit.name} {endpoint.name} ({endpoint.direction === "out" ? "OUT" : "IN"})</option>)}</select></label><label>mioXL DIN side<select aria-label="Wire mioXL DIN side" value={wirePort} onChange={event => setWirePort(Number(event.target.value))}><option value={0}>Choose DIN port</option>{wirePorts.map(port => <option key={port.id} value={port.id}>{port.hardware} {selectedWireEndpoint?.direction === "out" ? "IN" : "OUT"}</option>)}</select></label><button className="button primary" onClick={addWire}>Add connection</button></div>
     </section>
     <section className="gear-section"><h3>Named MIDI routes <span>{inventory.routes.length}</span></h3><p>Routes resolve from the physical map. Missing, ambiguous and conflicting wires block staging.</p>
-      {inventory.routes.map(route => { const resolved = resolveNamedRoute(inventory, scene, route); return <div className="gear-route" key={route.id}><strong>{route.name}</strong><span>{label(route.sourceEndpointId)} → {label(route.targetEndpointId)}</span><small>{resolved.issues.length ? resolved.issues.join(" ") : `${endpointName(`in-${resolved.source}`, scene.nodes, captureFor(scene))} → ${endpointName(`out-${resolved.target}`, scene.nodes, captureFor(scene))}`}</small><select aria-label={`Replacement scope for ${route.name}`} value={route.policy} onChange={event => onChange({ ...inventory, routes: inventory.routes.map(item => item.id === route.id ? { ...item, policy: event.target.value as NamedRoute["policy"] } : item) })}><option value="destination">Replace destination incoming routes</option><option value="both">Replace destination and source routes</option></select><div><button className="button secondary" disabled={!!resolved.issues.length} onClick={() => { try { const action = routeAction(route); if (action) setPreview(planQuickRoute(scene, action)); } catch (error) { setMessage(error instanceof Error ? error.message : "Cannot preview route."); } }}>Preview</button><button className="button subtle" onClick={() => { onChange({ ...inventory, routes: inventory.routes.filter(item => item.id !== route.id) }); setPreview(null); }}>Remove</button></div></div>; })}
+      {inventory.routes.map(route => { const resolved = resolveNamedRoute(inventory, scene, route); return <div className="gear-route" key={route.id}><strong>{route.name}</strong><span>{label(route.sourceEndpointId)} → {label(route.targetEndpointId)}</span><small>{resolved.issues.length ? resolved.issues.join(" ") : `${endpointName(`in-${resolved.source}`, scene.nodes, captureFor(scene))} → ${endpointName(`out-${resolved.target}`, scene.nodes, captureFor(scene))}`}</small>{!resolved.issues.length && <small>Path trace: recorded source cable → mioXL DIN {resolved.source} → {routesFor(scene).some(item => item.id === `in-${resolved.source}__out-${resolved.target}`) ? "baseline internal route present" : "internal route absent from baseline"} → mioXL DIN {resolved.target} → recorded destination cable.</small>}<select aria-label={`Replacement scope for ${route.name}`} value={route.policy} onChange={event => onChange({ ...inventory, routes: inventory.routes.map(item => item.id === route.id ? { ...item, policy: event.target.value as NamedRoute["policy"] } : item) })}><option value="destination">Replace destination incoming routes</option><option value="both">Replace destination and source routes</option></select><div><button className="button secondary" disabled={!!resolved.issues.length} onClick={() => { try { const action = routeAction(route); if (action) setPreview(planQuickRoute(scene, action)); } catch (error) { setMessage(error instanceof Error ? error.message : "Cannot preview route."); } }}>Preview</button><button className="button subtle" onClick={() => { onChange({ ...inventory, routes: inventory.routes.filter(item => item.id !== route.id) }); setPreview(null); }}>Remove</button></div></div>; })}
       <div className="gear-form"><label>Route name<input aria-label="Named route" value={routeName} maxLength={80} onChange={event => setRouteName(event.target.value)}/></label><label>From instrument OUT<select aria-label="Named route source" value={sourceEndpoint} onChange={event => setSourceEndpoint(event.target.value)}><option value="">Choose OUT</option>{endpoints.filter(item => item.direction === "out").map(item => <option key={item.id} value={item.id}>{item.unit.name} {item.name}</option>)}</select></label><label>To instrument IN<select aria-label="Named route destination" value={targetEndpoint} onChange={event => setTargetEndpoint(event.target.value)}><option value="">Choose IN</option>{endpoints.filter(item => item.direction === "in").map(item => <option key={item.id} value={item.id}>{item.unit.name} {item.name}</option>)}</select></label><button className="button primary" onClick={addRoute}>Add named route</button></div>
       {preview && <div className="gear-preview"><strong>Local replacement preview · {preview.action.name}</strong><p>{preview.removals.length} existing route{preview.removals.length === 1 ? "" : "s"} would be removed; {preview.addition ? "one route would be added" : "the requested route is already present"}.</p>{preview.removals.map(route => <small key={route.id}>{endpointName(route.source, scene.nodes, captureFor(scene))} → {endpointName(route.target, scene.nodes, captureFor(scene))}</small>)}<button className="button primary" onClick={() => { try { const route = inventory.routes.find(item => item.id === preview.action.id); const action = route && routeAction(route); if (!action) return; const latest = planQuickRoute(scene, action); if (latest.fingerprint !== preview.fingerprint || latest.action.source !== preview.action.source || latest.action.target !== preview.action.target || latest.action.policy !== preview.action.policy) { setPreview(latest); return setMessage("Wiring or routing changed. Review the updated replacement list."); } setMessage(onStage(latest)); setPreview(null); } catch (error) { setMessage(error instanceof Error ? error.message : "Could not stage route."); } }}>Stage local draft</button></div>}
     </section>
-    <p className="gear-evidence">Audio equipment and links are reserved as a separate inventory type. MOTU control and audio routing are not active here.</p>
+    <p className="gear-evidence">Audio cable records are separate from MIDI DIN and mioXL route drafts. MOTU internal routing and mixer control remain read-only or unavailable here.</p>
     {message && <p className="gear-message" role="status">{message}</p>}
   </div>;
 }

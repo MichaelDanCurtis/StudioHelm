@@ -44,6 +44,7 @@ test("synthetic demo opens with route counts, rendered minimap, and no runtime e
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
+  await page.getByRole("tab", { name: "Producer", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Your signal. Your flow." }),
   ).toBeVisible();
@@ -62,6 +63,7 @@ test("pointer drag creates a draft, undo/redo work, and refresh restores it", as
   page,
 }) => {
   await page.goto("/");
+  await page.getByRole("tab", { name: "Producer", exact: true }).click();
   await page.getByRole("button", { name: "Fit canvas", exact: true }).click();
   await dragConnection(page, "in-2", "out-13");
   await expect(page.locator(".react-flow__edge")).toHaveCount(5);
@@ -84,6 +86,7 @@ test("keyboard-friendly connection form stages routes and review removal is reve
   page,
 }) => {
   await page.goto("/");
+  await page.getByRole("tab", { name: "Producer", exact: true }).click();
   await page.getByTestId("node-in-2").click();
   await page
     .getByRole("combobox", { name: "Connect to destination" })
@@ -112,6 +115,7 @@ test("blocks have editable saved settings and signal types reject incompatible l
   page,
 }) => {
   await page.goto("/");
+  await page.getByRole("tab", { name: "Producer", exact: true }).click();
   await page.getByRole("button", { name: "Add block", exact: true }).click();
   await page.getByRole("button", { name: /^MIDI → OSC/ }).click();
   await page.getByLabel("MIDI controller number").fill("74");
@@ -139,6 +143,7 @@ test("library search and real drag/drop add a port, node movement persists", asy
   page,
 }) => {
   await page.goto("/");
+  await page.getByRole("tab", { name: "Producer", exact: true }).click();
   await page.getByRole("tab", { name: "Destinations", exact: true }).click();
   await page.getByRole("textbox", { name: "Search ports" }).fill("DIN 12");
   const item = page.getByRole("button", {
@@ -175,6 +180,7 @@ test("scene export uses the entered name and contains a local draft, not a hardw
   page,
 }) => {
   await page.goto("/");
+  await page.getByRole("tab", { name: "Producer", exact: true }).click();
   await page.getByRole("button", { name: "Save scene", exact: true }).click();
   await page.getByLabel("Scene name", { exact: true }).fill("Evening session");
   const promise = page.waitForEvent("download");
@@ -201,6 +207,7 @@ test("small screens show the canvas and allow drawers without page overflow", as
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+  await page.getByRole("tab", { name: "Producer", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Your signal. Your flow." }),
   ).toBeVisible();
@@ -228,6 +235,7 @@ test("corrupt stored drafts preserve the original JSON and open the demo without
     STORAGE_KEY,
   );
   await page.goto("/");
+  await page.getByRole("tab", { name: "Producer", exact: true }).click();
   await expect(page.locator(".react-flow__node")).toHaveCount(5);
   await expect(page.getByRole("status")).toContainText(
     "saved draft did not match this inventory",

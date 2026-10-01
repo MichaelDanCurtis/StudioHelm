@@ -51,6 +51,7 @@ import { PatchEdge } from "./components/PatchEdge";
 import { NetworkPanel } from "./components/NetworkPanel";
 import { ControlRoom } from "./components/ControlRoom";
 import { GearInventoryEditor } from "./components/GearInventoryEditor";
+import { PerformerSurface } from "./components/PerformerSurface";
 import { planQuickRoute, type QuickRoutePlan } from "./lib/controls";
 import { GEAR_INVALID_BACKUP_KEY, GEAR_KEY, parseGearInventory, readGearInventory, type GearInventory } from "./lib/gear-inventory";
 import { deviceRequest, type ApplyPlan } from "./lib/device";
@@ -93,6 +94,10 @@ const familyColors: Record<string, string> = {
 };
 type History = { past: Scene[]; present: Scene; future: Scene[] };
 type ModalName = "save" | "review" | "help" | "blocks" | "network" | "inventory" | null;
+type WorkspaceView = "engineer" | "canvas" | "routes" | "controls" | "performer";
+type ProducerView = "canvas" | "routes" | "controls";
+const VIEW_KEY = "studiohelm.workspace-view.v1";
+const isProducerView = (value: WorkspaceView): value is ProducerView => ["canvas", "routes", "controls"].includes(value);
 
 function Studio() {
   const [loaded] = useState(readScene);
@@ -168,13 +173,20 @@ function Studio() {
   }
   const [selectedNode, setSelectedNode] = useState<string | null>("in-1");
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
-  const [view, setView] = useState<"canvas" | "routes" | "controls">("canvas");
+  const [view, setView] = useState<WorkspaceView>(() => {
+    try { const saved = localStorage.getItem(VIEW_KEY) as WorkspaceView | null;
+      return saved && ["engineer", "canvas", "routes", "controls", "performer"].includes(saved) ? saved : "engineer";
+    } catch { return "engineer"; }
+  });
+  const lastProducerView = useRef<ProducerView>(isProducerView(view) ? view : "canvas");
   const [routeSearch, setRouteSearch] = useState("");
   const [modal, setModal] = useState<ModalName>(null);
-  function navigateView(next: "canvas" | "routes" | "controls") {
+  function navigateView(next: WorkspaceView) {
     setModal(null);
     setApplyPlan(null);
+    if (isProducerView(next)) lastProducerView.current = next;
     setView(next);
+    try { localStorage.setItem(VIEW_KEY, next); } catch { /* local storage is optional */ }
   }
   const [toast, setToast] = useState(loaded.warning ?? gearLoaded.warning ?? "");
   function changeGear(next: GearInventory) {
@@ -447,7 +459,7 @@ function Studio() {
     if (!existing)
       commit((current) => ({ ...current, nodes: [...current.nodes, next] }));
     selectNode(next.id);
-    setView("canvas");
+    navigateView("canvas");
     if (existing)
       void setCenter(existing.position.x + 125, existing.position.y + 85, {
         zoom: Math.max(zoom, 0.8),
@@ -460,7 +472,7 @@ function Studio() {
     commit((current) => ({ ...current, nodes: [...current.nodes, next] }));
     selectNode(next.id);
     setModal(null);
-    setView("canvas");
+    navigateView("canvas");
     setToast("Block added. Connect its handles to build a processing chain.");
   }
   function onDrop(event: DragEvent) {
@@ -526,24 +538,21 @@ function Studio() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div className="brand" aria-label="MioXLplus">
+        <button type="button" className="brand" aria-label="Studio home" onClick={() => navigateView("engineer")}>
           <span className="brand-symbol">
             <i />
             <i />
             <i />
             <i />
           </span>
-          <span>
-            mio<span className="brand-light">XL</span>
-            <sup>plus</sup>
-          </span>
-        </div>
+          <span>Studio<span className="brand-light">Helm</span><sup>working title</sup></span>
+        </button>
         <nav className="workflow-nav" aria-label="Workflow">
           <span className="workflow-label">Workflow</span>
-          <div className="view-tabs" role="tablist" aria-label="Workflow views">
-            <button role="tab" aria-selected={view === "canvas"} onClick={() => navigateView("canvas")}><GitBranch size={14} /> Canvas</button>
-            <button role="tab" aria-selected={view === "routes"} onClick={() => navigateView("routes")}><List size={15} /> Routes<span>{routes.length}</span></button>
-            <button role="tab" aria-selected={view === "controls"} onClick={() => navigateView("controls")}><Radio size={15} /> Control room</button>
+          <div className="view-tabs" role="tablist" aria-label="Workflow modes">
+            <button role="tab" aria-selected={view === "engineer"} onClick={() => navigateView("engineer")}>Sound engineer</button>
+            <button role="tab" aria-selected={isProducerView(view)} onClick={() => navigateView(lastProducerView.current)}>Producer</button>
+            <button role="tab" aria-selected={view === "performer"} onClick={() => navigateView("performer")}>Performer</button>
           </div>
         </nav>
         <div className="header-actions">
@@ -557,7 +566,7 @@ function Studio() {
                 ? "Saving…"
                 : "Export to save"}
           </span>
-          <button
+          {view !== "performer" && <button
             className="button secondary review-button"
             onClick={() => { setApplyPlan(null); setApplyResult(""); setModal("review"); }}
           >
@@ -565,35 +574,41 @@ function Studio() {
             {draftCount ? (
               <span className="button-count">{draftCount}</span>
             ) : null}
-          </button>
-          <button className="button primary" onClick={() => setModal("save")}>
+          </button>}
+          {view !== "performer" && <button className="button primary" onClick={() => setModal("save")}>
             <Layers size={15} />
             Save scene
-          </button>
+          </button>}
         </div>
       </header>
       <div
         inert={!!deviceBusy && !!applyPlan}
-        className={`workspace ${view === "controls" ? "controls-workspace" : ""} ${!libraryOpen ? "hide-library" : ""} ${!inspectorOpen ? "hide-inspector" : ""}`}
+        className={`workspace ${["controls", "engineer", "performer"].includes(view) ? "controls-workspace" : ""} ${!libraryOpen || view === "performer" ? "hide-library" : ""} ${!inspectorOpen || ["controls", "engineer", "performer"].includes(view) ? "hide-inspector" : ""}`}
       >
-        {libraryOpen ? (
-          <Library scene={scene} onAddPort={addPort} onAddBlock={addBlock} gear={gear} onOpenGear={() => setModal("inventory")} />
+        {libraryOpen && view !== "performer" ? (
+          <Library scene={scene} onAddPort={addPort} onAddBlock={addBlock} gear={gear} onOpenGear={() => navigateView("engineer")} />
         ) : null}
         <main className="main-stage">
           <header className="stage-heading">
             <div>
               <div className="eyebrow">
                 <span className="amber-line" />
-                {view === "controls" ? "THE MODULAR CONTROL ROOM" : "THE STUDIO PATCHBAY"}
+                {view === "engineer" ? "SOUND ENGINEER · SETUP" : view === "performer" ? "PERFORMER · PLAY" : "PRODUCER · DESIGN"}
               </div>
-              {view === "controls" ? <><h1>Your instruments. <span>One touch away.</span></h1><p>Design control panels, choose routes, and rehearse keyboard gestures locally.</p></> : <><h1>Your signal. <span>Your flow.</span></h1><p>Make connections. Shape possibilities.</p></>}
+              {view === "engineer" ? <><h1>Physical wiring. <span>One clear picture.</span></h1><p>Place your equipment, record cables, and inspect the routing inside each supported device.</p></> : view === "performer" ? <><h1>Perform. <span>Stay in the music.</span></h1><p>A focused local surface drawn from the controls you designed.</p></> : view === "controls" ? <><h1>Your instruments. <span>One touch away.</span></h1><p>Design control panels, choose routes, and rehearse keyboard gestures locally.</p></> : <><h1>Your signal. <span>Your flow.</span></h1><p>Make connections. Shape possibilities.</p></>}
             </div>
             {view === "canvas" && <div className="stage-heading-actions">
               <button className="button add-block" onClick={() => setModal("blocks")}><Plus size={14} /> Add block</button>
               <button className="icon-button help-button" onClick={() => setModal("help")} aria-label="Canvas help"><CircleHelp size={18} /></button>
             </div>}
+            {view === "controls" && <div className="stage-heading-actions"><button className="button secondary" onClick={() => navigateView("performer")}>Preview Performer →</button></div>}
           </header>
-          <div className="device-toolbar">
+          {isProducerView(view) && <nav className="producer-nav" aria-label="Producer views"><div className="view-tabs" role="tablist" aria-label="Producer workspaces">
+            <button role="tab" aria-selected={view === "canvas"} onClick={() => navigateView("canvas")}><GitBranch size={14} /> Canvas</button>
+            <button role="tab" aria-selected={view === "routes"} onClick={() => navigateView("routes")}><List size={15} /> Routes<span>{routes.length}</span></button>
+            <button role="tab" aria-selected={view === "controls"} onClick={() => navigateView("controls")}><Radio size={15} /> Control room</button>
+          </div><span>Ableton Live link · not connected</span></nav>}
+          {view !== "performer" && <div className="device-toolbar">
             <div className={`device-read-status ${deviceRead ? "verified" : ""}`}>
               <span className="status-dot" /><span>{deviceBusy || (deviceRead ? `${capture.device.device_name} · ${capture.network.address}` : "Snapshot available")}</span>
               <small>{capture.revision ? `Read ${new Date(capture.captured_at).toLocaleTimeString()}` : "Synthetic demo"}</small>
@@ -603,8 +618,8 @@ function Studio() {
               <button className="button subtle" onClick={() => void refreshDevice()} disabled={!!deviceBusy} aria-label="Refresh mioXL"><RefreshCw size={14} className={deviceBusy === "Reading mioXL…" ? "spin" : ""} /><span>Refresh</span></button>
               <button className="button subtle" onClick={() => setModal("network")} disabled={!!deviceBusy}><Network size={14} />Network</button>
             </div>
-          </div>
-          {deviceError ? <div className="device-alert" role="alert">{deviceError}<button aria-label="Dismiss device error" onClick={() => setDeviceError("")}><X size={14} /></button></div> : null}
+          </div>}
+          {deviceError && view !== "performer" ? <div className="device-alert" role="alert">{deviceError}<button aria-label="Dismiss device error" onClick={() => setDeviceError("")}><X size={14} /></button></div> : null}
           <div
             className="flow-area"
             ref={flowArea}
@@ -614,9 +629,9 @@ function Studio() {
               event.dataTransfer.dropEffect = "move";
             }}
           >
-            <div
-              className={`canvas-wrapper ${view !== "canvas" ? "offstage" : ""}`}
-            >
+            {view === "engineer" && <div className="engineer-wrap"><GearInventoryEditor inventory={gear} scene={scene} onChange={changeGear} onStage={stageQuickRoute}/></div>}
+            {view === "performer" && <div className="performer-wrap"><PerformerSurface scene={scene} onEdit={() => navigateView("controls")} onStage={stageQuickRoute}/></div>}
+            {view === "canvas" && <div className="canvas-wrapper">
               <ReactFlow<PatchNodeType>
                 nodes={renderNodes}
                 edges={renderEdges}
@@ -767,7 +782,7 @@ function Studio() {
                   Drag a handle to connect
                 </span>
               </div>
-            </div>
+            </div>}
             {view === "routes" ? (
               <div className="route-table-view">
                 <div className="table-heading">
@@ -841,7 +856,7 @@ function Studio() {
             ) : null}
             <div className={`control-room-wrap ${view !== "controls" ? "offstage" : ""}`}><ControlRoom scene={scene} onStage={stageQuickRoute}/></div>
           </div>
-          <footer className="stage-footer">
+          {view !== "performer" && <footer className="stage-footer">
             <div>
               <button
                 className="icon-button"
@@ -864,7 +879,7 @@ function Studio() {
                   ? ` · ${blockCount} draft ${blockCount === 1 ? "block" : "blocks"}`
                   : ""}
               </span>
-              {view !== "controls" && <button
+              {(view === "canvas" || view === "routes") && <button
                 className="icon-button"
                 onClick={() => setInspectorOpen((open) => !open)}
                 aria-label="Toggle inspector"
@@ -872,9 +887,9 @@ function Studio() {
                 <PanelRightClose size={14} />
               </button>}
             </div>
-          </footer>
+          </footer>}
         </main>
-        {inspectorOpen && view !== "controls" ? (
+        {inspectorOpen && (view === "canvas" || view === "routes") ? (
           <Inspector
             scene={scene}
             node={node}
@@ -927,7 +942,7 @@ function Studio() {
                 }
                 return { ...current, nodes };
               });
-              setView("canvas");
+              navigateView("canvas");
             }}
           />
         ) : null}

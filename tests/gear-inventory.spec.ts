@@ -26,14 +26,28 @@ test("physical MIDI resolution requires explicit direction-correct DIN wiring", 
   expect(parseGearInventory({ ...inventory, routes: [{ ...route, sourceEndpointId: "peak-in" }] })).toBeNull();
 });
 
+test("catalog adds a unit to the visual studio without inventing cables", async ({ page }) => {
+  await page.route("**/api/studio/**", route => route.fulfill({ status: 503, json: { error: "Offline inventory fixture" } }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "+ Add from catalog" }).click();
+  await page.getByRole("button", { name: /Moog Moog One/ }).click();
+  await expect(page.locator(".wiring-card").filter({ hasText: "Moog One" })).toBeVisible();
+  await expect(page.locator(".wiring-visual .react-flow__edge")).toHaveCount(0);
+  await page.getByRole("tab", { name: "Performer" }).click();
+  await expect(page.getByRole("heading", { name: "Just the controls you need." })).toBeVisible();
+  await page.getByRole("button", { name: "Studio home" }).click();
+  await expect(page.getByRole("heading", { name: /Physical wiring/ })).toBeVisible();
+  await expect(page.locator(".wiring-card").filter({ hasText: "Moog One" })).toBeVisible();
+});
+
 test("manual gear inventory survives view changes and resolves a named draft", async ({ page }) => {
   await page.route("**/api/studio/**", route => route.fulfill({ status: 503, json: { error: "Offline inventory fixture" } }));
   await page.goto("/");
-  await page.getByRole("button", { name: "Open wiring map" }).click();
-  await expect(page.getByRole("dialog", { name: "Gear inventory and physical wiring" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Sound engineer" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByLabel("Physical wiring canvas")).toBeVisible();
   for (const name of ["Moog One", "Peak"]) {
     await page.getByRole("textbox", { name: "New instrument" }).fill(name);
-    await page.getByRole("button", { name: "Add instrument" }).click();
+    await page.getByRole("button", { name: "Add MIDI instrument with manual IN/OUT" }).click();
   }
   await page.getByRole("combobox", { name: "Profile for Peak" }).selectOption("novation-peak");
   await expect(page.getByText("Physical wire is missing.").first()).toBeVisible();
@@ -50,12 +64,13 @@ test("manual gear inventory survives view changes and resolves a named draft", a
   await page.getByRole("button", { name: "Preview", exact: true }).click();
   await expect(page.locator(".gear-preview")).toContainText("2 existing routes would be removed");
   await page.getByRole("button", { name: "Stage local draft" }).click();
-  await page.getByRole("button", { name: "Close dialog" }).click();
   await expect(page.getByRole("button", { name: "Review draft 3" })).toBeVisible();
+  await page.getByRole("tab", { name: "Producer", exact: true }).click();
   await page.getByRole("tab", { name: "Control room" }).click();
   await expect(page.getByRole("button", { name: "Open wiring map" })).toBeVisible();
   await expect(page.locator(".gear-sidebar")).toContainText("Moog One");
   await page.reload();
+  await page.getByRole("tab", { name: "Producer", exact: true }).click();
   await page.getByRole("tab", { name: "Control room" }).click();
   await expect(page.locator(".gear-sidebar")).toContainText("Peak");
 });

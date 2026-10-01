@@ -1,6 +1,6 @@
-# MioXLplus Studio
+# StudioHelm (working title)
 
-A visual MIDI patchbay built with React, TypeScript, Vite, and React Flow. Its checked-in offline starting point is a **synthetic demo**, not a captured device configuration. The optional local adapter can read a configured mioXL; hardware changes require a separate explicit review and apply action.
+A local studio workspace built with React, TypeScript, Vite, and React Flow. **Sound engineer** records equipment and physical MIDI or audio cables, **Producer** designs routing and controls, and **Performer** previews a focused control surface. Its checked-in offline starting point is a **synthetic demo**, not a captured device configuration. The optional local adapter can read a configured mioXL; hardware changes require a separate explicit review and apply action.
 
 ## Run locally
 
@@ -9,7 +9,7 @@ npm ci
 npm run dev
 ```
 
-Open [MioXLplus Studio](http://127.0.0.1:5186). The development server binds to localhost and uses port 5186 exclusively. Fonts are bundled locally. Python 3 is required for optional device access. To enable a live read, set `MIOXLPLUS_DEVICE_HOST` and `MIOXLPLUS_DEVICE_SERIAL` in your local shell for the intended mioXL before starting Vite. Neither value is checked in. Without both values, the device adapter refuses to open a session. The offline demo never supplies a hardware identity.
+Open [StudioHelm](http://127.0.0.1:5186). The development server binds to localhost and uses port 5186 exclusively. Fonts are bundled locally. Python 3 is required for optional device access. To enable a live read, set `MIOXLPLUS_DEVICE_HOST` and `MIOXLPLUS_DEVICE_SERIAL` in your local shell for the intended mioXL before starting Vite. Neither value is checked in. Without both values, the device adapter refuses to open a session. The offline demo never supplies a hardware identity.
 
 ## Available now
 
@@ -18,7 +18,8 @@ Open [MioXLplus Studio](http://127.0.0.1:5186). The development server binds to 
 - Review-and-apply for direct preset routes, including a recovery journal, stale-state checks, acknowledgements and read-back.
 - A network inventory panel for RTP-MIDI, Dante discovery, MOTU AVB switches and MOTU AVB mixer API inspection.
 - A modular **Control room** with named panels, one-touch route actions, a Novation Peak instrument profile, simulated eight-control surface preview, keyboard CC bindings and an opt-in local OSC bridge.
-- A shared workspace sidebar and centered **Workflow** navigation for Canvas, Routes, and Control room, plus a manually entered gear inventory and physical MIDI DIN wiring map.
+- Centered **Workflow** navigation for Sound engineer, Producer, and Performer. Clicking the StudioHelm wordmark returns to Sound engineer. Producer contains Canvas, Routes, and Control room.
+- A visual equipment catalog, local physical MIDI DIN and audio cable map, and separately labeled mioXL internal routes. Unknown model ports and MOTU internal routes are left unclaimed.
 
 - Custom source, destination, and processor cards on a pan/zoom canvas.
 - Drag connections between compatible handles, or use the inspector's connection form.
@@ -29,17 +30,17 @@ Open [MioXLplus Studio](http://127.0.0.1:5186). The development server binds to 
 - Automatically save the current scene in local browser storage; rename and export a portable JSON scene.
 - Use collapsible panels on small screens, keyboard shortcuts, and reduced-motion preferences.
 
-The default canvas shows five ports and four synthetic demo routes as a focused starting view. Solid paths represent the current baseline, either demo or a verified device read; dashed paths represent new local connections. Removing a node from the canvas hides that endpoint and removes draft connections attached to it; a live hardware route is retained unless a connection is explicitly removed.
+Open Producer → Canvas to see five ports and four synthetic demo routes as a focused starting view. Solid paths represent the current baseline, either demo or a verified device read; dashed paths represent new local connections. Removing a node from the canvas hides that endpoint and removes draft connections attached to it; a live hardware route is retained unless a connection is explicitly removed.
 
 ## Gear inventory and workflow
 
 ### Integrated workflow concept
 
-Open [`mockups/studio-system.html`](mockups/studio-system.html) locally to review **StudioHelm** (working title), a separate, interactive concept for a centralized studio controller with mioXL as one integration. **Sound engineer** sets up equipment and physical wiring, **Producer** designs named instrument interactions and a panel, and **Performer** sees a simple surface with an obvious return to editing. Its neutral industrial styling uses blue signal accents, dot-matrix headings, and a glass highlight on the selected device. It is a mockup only; its catalog choices, cables, Ableton relationship, OSC addresses, and performer controls do not save state or operate devices. Dashed cables are hypothetical. The Akai MPC X name is user confirmed, while its ports and control profile still need verification. This concept is not yet integrated into the running app.
+Open [`mockups/studio-system.html`](mockups/studio-system.html) locally to review the earlier interactive concept. It is a mockup only; its catalog choices, cables, Ableton relationship, OSC addresses, and performer controls do not save state or operate devices. Dashed cables are hypothetical. The Akai MPC X name is user confirmed, while its ports and control profile still need verification.
 
-The wordmark identifies the app; the centered **Workflow** choices switch between Canvas, Routes, and Control room. The same left workspace sidebar remains available in each view. Open **wiring map** there to name instruments, their MIDI IN/OUT endpoints, and each physical DIN connection. Instrument MIDI OUT connects to a mioXL DIN input; a mioXL DIN output connects to instrument MIDI IN. No Moog One, Peak, or other physical connection is inferred from demo or device port names. The inventory starts empty and saves separately under `mioxlplus.gear.v1`, preserving existing numeric route drafts and Control room mappings.
+The StudioHelm wordmark returns to Sound engineer. The same left workspace sidebar remains available in Sound engineer and Producer. Add a model from the catalog or add custom equipment, then record actual MIDI IN/OUT and audio ports and physical cables. Instrument MIDI OUT connects to a mioXL DIN input; a mioXL DIN output connects to instrument MIDI IN. No Moog One, Peak, or other physical connection is inferred from demo or device port names. The inventory starts empty and saves separately under `mioxlplus.gear.v1`, preserving existing numeric route drafts and Control room mappings.
 
-Named gear routes resolve through those explicit physical connections. Missing wires, multiple wires on one endpoint, and shared DIN sides are shown as blockers. A resolved route opens an exact replacement preview before **Stage local draft** changes browser state; it does not write the mioXL. The manufacturer profile catalog currently includes the published Novation Peak parameter map as a manually selectable profile. Unit channel and wiring remain separate. Device identity, MIDI-CI Property Exchange, and MIDI learn have schema space but no active query or learning operation. Audio inventory is a separate reserved type; MOTU control and audio routing remain deferred.
+Named gear routes resolve through those explicit physical connections. Missing wires, multiple wires on one endpoint, and shared DIN sides are shown as blockers. A resolved route opens an exact replacement preview before **Stage local draft** changes browser state; it does not write the mioXL. The manufacturer profile catalog currently includes the published Novation Peak parameter map as a manually selectable profile. Unit channel and wiring remain separate. Device identity, MIDI-CI Property Exchange, and MIDI learn have schema space but no active query or learning operation. Audio ports and cables can be recorded manually; MOTU internal routing and control remain deferred.
 
 ## Control room and safe rehearsal
 

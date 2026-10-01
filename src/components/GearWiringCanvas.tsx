@@ -3,16 +3,16 @@ import { ReactFlow, Background, BackgroundVariant, Handle, Position, type Connec
 import { captureFor, type Scene } from "../lib/studio";
 import type { GearInventory } from "../lib/gear-inventory";
 
-type Port = { id: string; label: string; direction: "in" | "out"; side: "gear" | "hub" | "audio" };
+type Port = { id: string; label: string; direction: "in" | "out"; side: "gear" | "hub" | "audio"; signal: "midi" | "audio" };
 type CardNode = Node<{ title: string; subtitle: string; ports: Port[]; signal: "midi" | "audio" }, "card">;
 
-function DeviceCard({ data }: NodeProps<CardNode>) {
-  return <div className={`wiring-card ${data.signal}`}>
+function DeviceCard({ data, selected }: NodeProps<CardNode>) {
+  return <div className={`wiring-card ${data.signal} ${selected ? "selected" : ""}`}>
     <strong>{data.title}</strong><small>{data.subtitle}</small>
-    {data.ports.length ? data.ports.map(port => <div className="wiring-port" key={port.id}>
+    {data.ports.length ? data.ports.map(port => <div className={`wiring-port ${port.signal}`} key={port.id}>
       <Handle id={`${port.side}:${port.id}`} type={port.direction === "out" ? "source" : "target"}
-        position={port.side === "hub" ? Position.Left : Position.Right} className={`wiring-handle ${data.signal}`} />
-      <span>{port.label}</span><em>{port.direction.toUpperCase()}</em>
+        position={port.side === "hub" ? Position.Left : Position.Right} className={`wiring-handle ${port.signal}`} />
+      <span>{port.label}</span><em>{port.signal.toUpperCase()} {port.direction.toUpperCase()}</em>
     </div>) : <p className="wiring-port-empty">Ports unknown · add confirmed ports below</p>}
   </div>;
 }
@@ -26,25 +26,29 @@ export function GearWiringCanvas({ inventory, scene, onChange, onNotice }: Props
     const inputs = din.filter(port => port.supports_input);
     const outputs = din.filter(port => port.supports_output);
     const nodes: CardNode[] = inventory.units.map((unit, index) => ({
-      id: unit.id, type: "card", position: { x: 30, y: 28 + index * 172 },
-      data: { title: unit.name, subtitle: `MIDI · ${unit.modelId ?? "custom unit"}`, signal: "midi", ports: unit.endpoints.map(port => ({ id: port.id, label: port.name, direction: port.direction, side: "gear" })) },
+      id: unit.id, type: "card", position: unit.position ?? { x: 30, y: 28 + index * 172 },
+      data: { title: unit.name, subtitle: `${(unit.capabilities ?? ["midi"]).join(" · ")} · ${unit.modelId ?? "custom unit"}`, signal: unit.endpoints.length ? "midi" : "audio", ports: [
+        ...unit.endpoints.map(port => ({ id: port.id, label: port.name, direction: port.direction, side: "gear" as const, signal: "midi" as const })),
+        ...(unit.audioPorts ?? []).map(port => ({ id: port.id, label: port.name, direction: port.direction, side: "audio" as const, signal: "audio" as const })),
+      ] },
     }));
     nodes.push({ id: "mioxl-inputs", type: "card", position: { x: 470, y: 28 }, data: {
-      title: "mioXL · DIN inputs", subtitle: "Captured port inventory · MIDI", signal: "midi",
-      ports: inputs.map(port => ({ id: String(port.id), label: port.hardware, direction: "in", side: "hub" })),
+      title: "mioXL · DIN inputs", subtitle: `${capture.revision ? "Device" : "Synthetic demo"} port inventory · MIDI`, signal: "midi",
+      ports: inputs.map(port => ({ id: String(port.id), label: port.hardware, direction: "in", side: "hub", signal: "midi" })),
     } });
     nodes.push({ id: "mioxl-outputs", type: "card", position: { x: 470, y: 375 }, data: {
-      title: "mioXL · DIN outputs", subtitle: "Captured port inventory · MIDI", signal: "midi",
-      ports: outputs.map(port => ({ id: String(port.id), label: port.hardware, direction: "out", side: "hub" })),
+      title: "mioXL · DIN outputs", subtitle: `${capture.revision ? "Device" : "Synthetic demo"} port inventory · MIDI`, signal: "midi",
+      ports: outputs.map(port => ({ id: String(port.id), label: port.hardware, direction: "out", side: "hub", signal: "midi" })),
     } });
     const audioTop = Math.max(780, 80 + inventory.units.length * 172);
     inventory.audio.units.forEach((unit, index) => nodes.push({
       id: unit.id, type: "card", position: { x: index % 2 ? 470 : 30, y: audioTop + Math.floor(index / 2) * 180 },
-      data: { title: unit.name, subtitle: `AUDIO · ${unit.model ?? "custom unit"}`, signal: "audio", ports: (unit.ports ?? []).map(port => ({ id: port.id, label: port.name, direction: port.direction, side: "audio" })) },
+      data: { title: unit.name, subtitle: `AUDIO · ${unit.model ?? "custom unit"}`, signal: "audio", ports: (unit.ports ?? []).map(port => ({ id: port.id, label: port.name, direction: port.direction, side: "audio", signal: "audio" })) },
     }));
     const endpointUnit = new Map(inventory.units.flatMap(unit => unit.endpoints.map(port => [port.id, unit.id] as const)));
     const endpointDirection = new Map(inventory.units.flatMap(unit => unit.endpoints.map(port => [port.id, port.direction] as const)));
-    const audioUnit = new Map(inventory.audio.units.flatMap(unit => (unit.ports ?? []).map(port => [port.id, unit.id] as const)));
+    const audioUnit = new Map([...inventory.units.flatMap(unit => (unit.audioPorts ?? []).map(port => [port.id, unit.id] as const)),
+      ...inventory.audio.units.flatMap(unit => (unit.ports ?? []).map(port => [port.id, unit.id] as const))]);
     const edges: Edge[] = inventory.wires.flatMap(wire => {
       const unit = endpointUnit.get(wire.endpointId), direction = endpointDirection.get(wire.endpointId);
       if (!unit || !direction) return [];
@@ -76,7 +80,7 @@ export function GearWiringCanvas({ inventory, scene, onChange, onNotice }: Props
       return onNotice("MIDI DIN cable recorded in this browser. Confirm it matches the physical cable.");
     }
     if (from[0] === "audio" && to[0] === "audio") {
-      const ports = inventory.audio.units.flatMap(unit => unit.ports ?? []);
+      const ports = [...inventory.units.flatMap(unit => unit.audioPorts ?? []), ...inventory.audio.units.flatMap(unit => unit.ports ?? [])];
       if (ports.find(port => port.id === from[1])?.direction !== "out" || ports.find(port => port.id === to[1])?.direction !== "in")
         return onNotice("Connect an audio OUT port to an audio IN port.");
       onChange({ ...inventory, audio: { ...inventory.audio, links: [...inventory.audio.links, { id: crypto.randomUUID(), from: from[1], to: to[1] }] } });
@@ -86,6 +90,8 @@ export function GearWiringCanvas({ inventory, scene, onChange, onNotice }: Props
   }, [inventory, onChange, onNotice, scene]);
   return <div className="wiring-visual" aria-label="Physical wiring canvas">
     <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onConnect={connect}
+      onNodeDragStop={(_, node) => { if (inventory.units.some(unit => unit.id === node.id)) onChange({ ...inventory,
+        units: inventory.units.map(unit => unit.id === node.id ? { ...unit, position: node.position } : unit) }); }}
       onEdgeClick={(_, edge) => { if (inventory.wires.some(wire => wire.id === edge.id)) onChange({ ...inventory, wires: inventory.wires.filter(wire => wire.id !== edge.id) });
         else onChange({ ...inventory, audio: { ...inventory.audio, links: inventory.audio.links.filter(link => link.id !== edge.id) } }); onNotice("Cable removed from the local map."); }}
       fitView fitViewOptions={{ padding: .12, maxZoom: 1 }} minZoom={.25} maxZoom={1.4} nodesDraggable nodesConnectable elementsSelectable>

@@ -9,6 +9,7 @@ test("live inventory updates names, survives reload, and preserves local draft o
   const fresh = snapshot(); fresh.ports[0].input_name = "Live keyboard";
   await page.route("**/api/studio/**", route => route.fulfill({ json: { snapshot: fresh } }));
   await page.goto("/");
+  await page.getByRole("tab", { name: "Producer", exact: true }).click();
   await expect(page.locator(".device-read-status")).toContainText(fresh.network.address);
   await expect(page.getByTestId("node-in-1")).toContainText("Live keyboard");
   await page.getByTestId("node-in-2").click();
@@ -26,6 +27,7 @@ test("external route change stops refresh from rebasing a local draft silently",
   const fresh = snapshot();
   await page.route("**/api/studio/**", route => route.fulfill({json:{snapshot:fresh}}));
   await page.goto("/");
+  await page.getByRole("tab", { name: "Producer", exact: true }).click();
   await expect(page.locator(".device-read-status")).toContainText(fresh.network.address);
   await page.getByTestId("node-in-2").click();
   await page.getByRole("combobox", {name:"Connect to destination"}).selectOption("out-13");
@@ -57,6 +59,7 @@ test("hardware review does not write until explicit apply, then adopts verified 
     return route.fulfill({status:404,json:{error:"Unexpected request"}});
   });
   await page.goto("/");
+  await page.getByRole("tab", { name: "Producer", exact: true }).click();
   await expect(page.locator(".device-read-status")).toContainText(fresh.network.address);
   await page.getByTestId("node-in-2").click();
   await page.getByRole("combobox", {name:"Connect to destination"}).selectOption("out-13");
@@ -78,6 +81,7 @@ test("MOTU discovery shows real API controls supplied by adapter and performs no
     return route.fulfill({json:op==="refresh"?{snapshot:snapshot()}:{at:new Date().toISOString(),scope:"Test discovery",mode:"read-only",services:[],checks:[],motu:[{uid:"0001f2fffe000001",name:"Studio 828",model:"828es",address:"192.0.2.20",parameterCount:1000,controlCount:1,controls:[{path:"mix/chan/0/matrix/fader",value:0.5}]}]}});
   });
   await page.goto("/");
+  await page.getByRole("tab", { name: "Producer", exact: true }).click();
   await expect(page.locator(".device-read-status")).toContainText(capture.network.address);
   await page.getByRole("button",{name:"Network",exact:true}).click();
   await page.getByRole("button",{name:"Scan network"}).click();
