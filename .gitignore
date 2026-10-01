@@ -1,0 +1,25 @@
+node_modules/
+dist/
+*.tsbuildinfo
+test-results/
+playwright-report/
+.DS_Store
+
+.runtime/
+__pycache__/
+
+# Local device state, captured network evidence, and third-party research inputs.
+research/
+/GIT-READINESS.md
+
+# Local configuration and generated previews.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.log
+coverage/
+mockups/*.png
